@@ -136,8 +136,12 @@ def stage_train(args, work):
         if not trainer.exists():
             sys.exit(f"gsplat trainer not found at {trainer}; run scripts/setup_fedora.sh or set GSPLAT_DIR")
         # Frames are already capped at --max-width, so train at full resolution (data_factor 1).
-        run([sys.executable, trainer, "default", "--data_dir", work / "dataset", "--data_factor", "1",
-             "--result_dir", model, "--save_ply", "--disable_viewer", *args.train_args], cwd=gsplat_dir / "examples")
+        # The default strategy grows without bound on a 4K room capture (5M+ Gaussians, out of memory on 16 GB);
+        # MCMC keeps the count capped. Expandable segments reduce allocator fragmentation as the model grows.
+        os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+        run([sys.executable, trainer, "mcmc", "--data_dir", work / "dataset", "--data_factor", "1",
+             "--result_dir", model, "--save_ply", "--disable_viewer",
+             "--strategy.cap-max", str(args.max_gaussians), *args.train_args], cwd=gsplat_dir / "examples")
         plys = sorted((model / "ply").glob("*.ply"), key=lambda p: p.stat().st_mtime)
         print(f"\nTrained model: {model}\n  splat file: {plys[-1] if plys else model / 'ply'}"
               "\n  view it by dragging the .ply into https://superspl.at/editor")
@@ -170,6 +174,8 @@ def main():
     ap.add_argument("--colmap-mapper", action="store_true", help="use COLMAP's mapper even if GLOMAP is installed")
     ap.add_argument("--trainer", choices=["gsplat", "fluxgs"], default="gsplat",
                     help="gsplat (default) or this repo's Flux-GS trainer (needs WITH_FLUXGS=1 setup)")
+    ap.add_argument("--max-gaussians", type=int, default=3_000_000,
+                    help="cap on splat count for gsplat (MCMC strategy); lower it if training runs out of GPU memory")
     ap.add_argument("--stop-after", choices=STAGES, default="train")
     ap.add_argument("--force", choices=STAGES, help="rerun from this stage, deleting its output and later ones")
     ap.add_argument("train_args", nargs=argparse.REMAINDER, help="extra train.py args after --")

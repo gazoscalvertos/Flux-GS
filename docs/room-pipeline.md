@@ -36,7 +36,9 @@ output exists, so you can rerun after a failure; `--force poses` redoes poses on
 
 Useful options: `--stop-after poses` to check registration before training, `--frames 400` for larger
 rooms, `--matcher sequential` for very long videos, and anything after `--` is passed to the trainer
-(for example `-- --steps_scaler 0.25` for a quick low-quality test run).
+(for example `-- --steps_scaler 0.25` for a quick low-quality test run). gsplat trains with its MCMC
+strategy capped at `--max-gaussians` (3 million by default, about 5 GB of GPU memory on a room); lower it
+if training runs out of memory.
 
 For a quick end-to-end check of the Flux-GS trainer (about a minute of training), shorten the run and move
 the compression stages inside it; `--nn_iter` must not be later than `--net_itr`:
