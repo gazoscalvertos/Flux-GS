@@ -6,3 +6,5 @@ tiny-cuda-nn/
 datasets/
 .vscode
 .agents
+rooms/
+*.egg-info/
