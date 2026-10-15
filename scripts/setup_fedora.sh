@@ -24,14 +24,17 @@ eval "$(conda shell.bash hook)"
 
 if ! conda env list | awk '{print $1}' | grep -qx "$ENV_NAME"; then
   echo "==> Creating conda env $ENV_NAME"
-  conda create -y -n "$ENV_NAME" -c conda-forge \
+  conda create -y -n "$ENV_NAME" --override-channels -c conda-forge \
     python=3.11 cuda-version=12.8 cuda-nvcc cuda-cudart-dev cuda-libraries-dev \
     gcc_linux-64=13 gxx_linux-64=13 cmake ninja git ffmpeg colmap
 fi
+# conda's activation hooks (e.g. cuda-nvcc's) reference unset variables, so relax `set -u` around them.
+set +u
 conda activate "$ENV_NAME"
+set -u
 
 # GLOMAP is a much faster global mapper than COLMAP's incremental one; optional.
-conda install -y -c conda-forge glomap || echo "(glomap not available, COLMAP mapper will be used)"
+conda install -y --override-channels -c conda-forge glomap || echo "(glomap not available, COLMAP mapper will be used)"
 
 export CUDA_HOME="$CONDA_PREFIX"
 export TORCH_CUDA_ARCH_LIST="12.0"
