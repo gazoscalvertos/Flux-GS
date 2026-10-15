@@ -14,6 +14,7 @@ Example:
 import argparse
 import os
 import shutil
+import struct
 import subprocess
 import sys
 from pathlib import Path
@@ -75,9 +76,10 @@ def stage_frames(args, work):
 
 
 def count_registered(model_dir):
-    sys.path.insert(0, str(REPO_DIR))
-    from scene.colmap_loader import read_extrinsics_binary
-    return len(read_extrinsics_binary(str(model_dir / "images.bin")))
+    # images.bin starts with the number of registered images as a uint64. Read it directly rather than
+    # importing scene/, whose package init pulls in the Flux-GS training stack (cupy, cuML).
+    with open(model_dir / "images.bin", "rb") as f:
+        return struct.unpack("<Q", f.read(8))[0]
 
 
 def stage_poses(args, work):
