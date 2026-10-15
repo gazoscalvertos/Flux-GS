@@ -367,6 +367,9 @@ if __name__ == "__main__":
     parser.add_argument("--benchmark_dir", type=str, default=None)
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)
+    # Once the MLP stage starts (net_itr) the renderer reads the static/view features made at nn_iter.
+    if args.nn_iter > args.net_itr:
+        parser.error(f"--nn_iter ({args.nn_iter}) must not be later than --net_itr ({args.net_itr})")
     
     print("Optimizing " + args.model_path)
 

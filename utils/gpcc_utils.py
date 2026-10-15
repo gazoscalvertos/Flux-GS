@@ -1,4 +1,5 @@
 import os
+import subprocess
 import time
 from tempfile import TemporaryDirectory
 from typing import Union
@@ -22,26 +23,31 @@ def gpcc_encode(encoder_path: str, ply_path: str, bin_path: str) -> None:
                f'--intra_pred_max_node_size_log2=6 --positionQuantizationScale=1 --inferredDirectCodingMode=1 '
                f'--maxNumQtBtBeforeOt=4 --minQtbtSizeLog2=0 --planarEnabled=0 --planarModeIdcmUse=0 '
                f'--uncompressedDataPath={ply_path} --compressedStreamPath={bin_path} ')'''
-    enc_cmd = (f'{encoder_path} '
-               f'--mode=0 --trisoupNodeSizeLog2=0 --mergeDuplicatedPoints=0 --neighbourAvailBoundaryLog2=8 --positionQuantisationEnabled=1'
-               f'--intra_pred_max_node_size_log2=3 --positionQuantizationScale=1 --inferredDirectCodingMode=3 '
-               f'--maxNumQtBtBeforeOt=2 --minQtbtSizeLog2=0 --planarEnabled=0 --planarModeIdcmUse=0 --cabac_bypass_stream_enabled_flag=1 '
-               f'--uncompressedDataPath={ply_path} --compressedStreamPath={bin_path} ')
-    enc_cmd += '> nul 2>&1' if os.name == 'nt' else '> /dev/null 2>&1'
-    exit_code = os.system(enc_cmd)
-    assert exit_code == 0, f'GPCC encoder failed with exit code {exit_code}.'
+    enc_args = ['--mode=0', '--trisoupNodeSizeLog2=0', '--mergeDuplicatedPoints=0', '--neighbourAvailBoundaryLog2=8',
+                '--positionQuantisationEnabled=1', '--intra_pred_max_node_size_log2=3', '--positionQuantizationScale=1',
+                '--inferredDirectCodingMode=3', '--maxNumQtBtBeforeOt=2', '--minQtbtSizeLog2=0', '--planarEnabled=0',
+                '--planarModeIdcmUse=0', '--cabac_bypass_stream_enabled_flag=1',
+                f'--uncompressedDataPath={ply_path}', f'--compressedStreamPath={bin_path}']
+    run_gpcc(encoder_path, enc_args, 'encoder')
 
 
 def gpcc_decode(decoder_path: str, bin_path: str, recon_path: str) -> None:
     """
     Decompress geometry point cloud by GPCC codec.
     """
-    dec_cmd = (f'{decoder_path} '
-               f'--mode=1 --outputBinaryPly=1 '
-               f'--compressedStreamPath={bin_path} --reconstructedDataPath={recon_path} ')
-    dec_cmd += '> nul 2>&1' if os.name == 'nt' else '> /dev/null 2>&1'
-    exit_code = os.system(dec_cmd)
-    assert exit_code == 0, f'GPCC decoder failed with exit code {exit_code}.'
+    dec_args = ['--mode=1', '--outputBinaryPly=1',
+                f'--compressedStreamPath={bin_path}', f'--reconstructedDataPath={recon_path}']
+    run_gpcc(decoder_path, dec_args, 'decoder')
+
+
+def run_gpcc(codec_path: str, args: list, role: str) -> None:
+    # Passed as an argument list rather than through a shell so paths containing spaces work.
+    try:
+        result = subprocess.run([codec_path, *args], capture_output=True, text=True)
+    except FileNotFoundError:
+        raise FileNotFoundError(f'GPCC codec not found at {codec_path}; set FLUXGS_TMC3 to the tmc3 binary.')
+    assert result.returncode == 0, \
+        f'GPCC {role} failed with exit code {result.returncode}:\n{result.stdout[-2000:]}{result.stderr[-2000:]}'
 
 
 def write_ply_geo_ascii(geo_data: np.ndarray, ply_path: str) -> None:
