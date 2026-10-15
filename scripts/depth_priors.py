@@ -15,7 +15,8 @@ import torch
 import torch.nn.functional as F
 from PIL import Image
 
-MODEL = "depth-anything/Depth-Anything-V2-Large-hf"
+# Small is Apache-2.0; Base and Large are CC-BY-NC-4.0 (non-commercial), so only use those for experiments.
+MODEL = "depth-anything/Depth-Anything-V2-Small-hf"
 
 
 def main():
