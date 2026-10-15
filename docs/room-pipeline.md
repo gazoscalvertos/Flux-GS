@@ -10,8 +10,10 @@ on a local GPU, before the dedicated Android capture app exists.
 3. From the repo root run `bash scripts/setup_fedora.sh`.
 
 The script builds a `flux-gs` conda env with CUDA 12.8, GCC 13 (Fedora's own GCC is too new for nvcc),
-COLMAP, GLOMAP if available, PyTorch cu128, all CUDA extensions compiled for `sm_120`, cuML, and the
-MPEG `tmc3` codec. It ends by importing every extension on the GPU, so a clean finish means training will run.
+COLMAP, GLOMAP if available, PyTorch cu128 and [gsplat](https://github.com/nerfstudio-project/gsplat)
+compiled for `sm_120`. It ends by rendering a few test Gaussians on the GPU (`scripts/check_gpu.py`),
+so a clean finish means training will run. `WITH_FLUXGS=1` also builds Flux-GS's mobile-compression
+extras (tiny-cuda-nn, cuML, tmc3), which only the `--trainer fluxgs` option needs.
 
 ## 2. Capture a room with the phone
 
@@ -29,12 +31,12 @@ python scripts/process_room.py --video ~/Videos/kitchen.mp4 --name kitchen
 ```
 
 Output goes to `rooms/kitchen/`: `input/` (selected frames), `dataset/` (undistorted COLMAP scene),
-`model/` (trained splat, including `comp.json` for the WebGL viewer). Each stage is skipped when its
+`model/` (trained splat; `model/ply/*.ply` opens in the [SuperSplat](https://superspl.at/editor) web viewer). Each stage is skipped when its
 output exists, so you can rerun after a failure; `--force poses` redoes poses onwards.
 
 Useful options: `--stop-after poses` to check registration before training, `--frames 400` for larger
 rooms, `--matcher sequential` for very long videos, and anything after `--` is passed to `train.py`
-(for example `-- --mv 3` for multi-view training).
+(for example `-- --steps_scaler 0.25` for a quick low-quality test run).
 
 If fewer than 80% of frames register, the script warns you. The usual fix is recapturing with slower
 movement and more overlap; plain walls with no texture are the hardest case.

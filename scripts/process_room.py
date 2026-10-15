@@ -5,7 +5,7 @@ Stages, each skipped automatically if its output already exists (use --force to 
   1. frames  - extract frames from the video and keep the sharpest one in each time window
   2. poses   - COLMAP feature extraction + matching, GLOMAP/COLMAP mapping
   3. dataset - undistort to PINHOLE cameras in the layout train.py expects (images/, sparse/0/)
-  4. train   - run train.py with the indoor ("room") settings from train.sh
+  4. train   - train a splat with gsplat (default) or this repo's Flux-GS trainer
 
 Example:
   python scripts/process_room.py --video ~/Videos/kitchen.mp4 --name kitchen
@@ -125,14 +125,28 @@ def stage_dataset(args, work):
 
 def stage_train(args, work):
     model = work / "model"
-    run([sys.executable, "train.py", "-s", work / "dataset", "-m", model,
-         "--densification_interval", "500", "--optimizer_type", "default",
-         "--highfeature_lr", "0.02", "--grad_abs_thresh", "0.0008", *args.train_args], cwd=REPO_DIR)
-    print(f"\nTrained model: {model}\n  point cloud: {model}/point_cloud/\n  web viewer file: {model}/comp.json")
+    if args.trainer == "gsplat":
+        gsplat_dir = Path(os.environ.get("GSPLAT_DIR", REPO_DIR.parent / "gsplat"))
+        trainer = gsplat_dir / "examples" / "simple_trainer.py"
+        if not trainer.exists():
+            sys.exit(f"gsplat trainer not found at {trainer}; run scripts/setup_fedora.sh or set GSPLAT_DIR")
+        # Frames are already capped at --max-width, so train at full resolution (data_factor 1).
+        run([sys.executable, trainer, "default", "--data_dir", work / "dataset", "--data_factor", "1",
+             "--result_dir", model, "--save_ply", "--disable_viewer", *args.train_args], cwd=gsplat_dir / "examples")
+        plys = sorted((model / "ply").glob("*.ply"), key=lambda p: p.stat().st_mtime)
+        print(f"\nTrained model: {model}\n  splat file: {plys[-1] if plys else model / 'ply'}"
+              "\n  view it by dragging the .ply into https://superspl.at/editor")
+    else:
+        run([sys.executable, "train.py", "-s", work / "dataset", "-m", model,
+             "--densification_interval", "500", "--optimizer_type", "default",
+             "--highfeature_lr", "0.02", "--grad_abs_thresh", "0.0008", *args.train_args], cwd=REPO_DIR)
+        print(f"\nTrained model: {model}\n  point cloud: {model}/point_cloud/\n  web viewer file: {model}/comp.json")
 
 
 def stage_done(stage, work):
-    marker = {"frames": "input", "poses": "best_model.txt", "dataset": "dataset/sparse/0", "train": "model/comp.json"}
+    if stage == "train":
+        return any((work / "model" / "ply").glob("*.ply")) or (work / "model" / "comp.json").exists()
+    marker = {"frames": "input", "poses": "best_model.txt", "dataset": "dataset/sparse/0"}
     return (work / marker[stage]).exists()
 
 
@@ -149,6 +163,8 @@ def main():
     ap.add_argument("--matcher", choices=["exhaustive", "sequential"], default="exhaustive",
                     help="exhaustive is slower but handles revisiting parts of the room")
     ap.add_argument("--colmap-mapper", action="store_true", help="use COLMAP's mapper even if GLOMAP is installed")
+    ap.add_argument("--trainer", choices=["gsplat", "fluxgs"], default="gsplat",
+                    help="gsplat (default) or this repo's Flux-GS trainer (needs WITH_FLUXGS=1 setup)")
     ap.add_argument("--stop-after", choices=STAGES, default="train")
     ap.add_argument("--force", choices=STAGES, help="rerun from this stage, deleting its output and later ones")
     ap.add_argument("train_args", nargs=argparse.REMAINDER, help="extra train.py args after --")
