@@ -5,7 +5,8 @@ Stages, each skipped automatically if its output already exists (use --force to 
   1. frames  - extract frames from the video and keep the sharpest one in each time window
   2. poses   - COLMAP feature extraction + matching, GLOMAP/COLMAP mapping
   3. dataset - undistort to PINHOLE cameras in the layout train.py expects (images/, sparse/0/)
-  4. train   - train a splat with gsplat (default) or this repo's Flux-GS trainer
+  4. priors  - monocular depth maps (Depth Anything V2) used to keep walls and ceilings flat
+  5. train   - train a splat with gsplat (default) or this repo's Flux-GS trainer
 
 Example:
   python scripts/process_room.py --video ~/Videos/kitchen.mp4 --name kitchen
@@ -20,7 +21,7 @@ import sys
 from pathlib import Path
 
 REPO_DIR = Path(__file__).resolve().parent.parent
-STAGES = ["frames", "poses", "dataset", "train"]
+STAGES = ["frames", "poses", "dataset", "priors", "train"]
 IMAGE_EXTS = {".jpg", ".jpeg", ".png"}
 
 
@@ -128,20 +129,38 @@ def stage_dataset(args, work):
             f.rename(target / f.name)
 
 
+def stage_priors(args, work):
+    if not use_priors(args):
+        print("Depth priors off (--no-priors or --trainer fluxgs), skipping")
+        return
+    run([sys.executable, REPO_DIR / "scripts" / "depth_priors.py", work / "dataset" / "images", work / "dataset" / "priors"])
+
+
+def use_priors(args):
+    return args.trainer == "gsplat" and not args.no_priors
+
+
 def stage_train(args, work):
-    model = work / "model"
+    model = work / args.model_name
     if args.trainer == "gsplat":
         gsplat_dir = Path(os.environ.get("GSPLAT_DIR", REPO_DIR.parent / "gsplat"))
-        trainer = gsplat_dir / "examples" / "simple_trainer.py"
-        if not trainer.exists():
-            sys.exit(f"gsplat trainer not found at {trainer}; run scripts/setup_fedora.sh or set GSPLAT_DIR")
+        if not (gsplat_dir / "examples" / "simple_trainer.py").exists():
+            sys.exit(f"gsplat not found at {gsplat_dir}; run scripts/setup_fedora.sh or set GSPLAT_DIR")
+        prior_args = []
+        if use_priors(args):
+            # Depth/normal priors keep plain walls and ceilings flat instead of cloudy (see room_priors.py).
+            run([sys.executable, REPO_DIR / "scripts" / "make_room_trainer.py", gsplat_dir])
+            trainer = gsplat_dir / "examples" / "room_trainer.py"
+            prior_args = ["--prior_dir", work / "dataset" / "priors"]
+        else:
+            trainer = gsplat_dir / "examples" / "simple_trainer.py"
         # Frames are already capped at --max-width, so train at full resolution (data_factor 1).
         # The default strategy grows without bound on a 4K room capture (5M+ Gaussians, out of memory on 16 GB);
         # MCMC keeps the count capped. Expandable segments reduce allocator fragmentation as the model grows.
         os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
         run([sys.executable, trainer, "mcmc", "--data_dir", work / "dataset", "--data_factor", "1",
              "--result_dir", model, "--save_ply", "--disable_viewer",
-             "--strategy.cap-max", str(args.max_gaussians), *args.train_args], cwd=gsplat_dir / "examples")
+             "--strategy.cap-max", str(args.max_gaussians), *prior_args, *args.train_args], cwd=gsplat_dir / "examples")
         plys = sorted((model / "ply").glob("*.ply"), key=lambda p: p.stat().st_mtime)
         print(f"\nTrained model: {model}\n  splat file: {plys[-1] if plys else model / 'ply'}"
               "\n  view it by dragging the .ply into https://superspl.at/editor")
@@ -152,9 +171,13 @@ def stage_train(args, work):
         print(f"\nTrained model: {model}\n  point cloud: {model}/point_cloud/\n  web viewer file: {model}/comp.json")
 
 
-def stage_done(stage, work):
+def stage_done(stage, work, args):
     if stage == "train":
-        return any((work / "model" / "ply").glob("*.ply")) or (work / "model" / "comp.json").exists()
+        model = work / args.model_name
+        return any((model / "ply").glob("*.ply")) or (model / "comp.json").exists()
+    if stage == "priors":
+        priors, images = work / "dataset" / "priors", work / "dataset" / "images"
+        return not use_priors(args) or (priors.exists() and len(list(priors.glob("*.npy"))) == len(list(images.iterdir())))
     marker = {"frames": "input", "poses": "best_model.txt", "dataset": "dataset/sparse/0"}
     return (work / marker[stage]).exists()
 
@@ -176,6 +199,10 @@ def main():
                     help="gsplat (default) or this repo's Flux-GS trainer (needs WITH_FLUXGS=1 setup)")
     ap.add_argument("--max-gaussians", type=int, default=3_000_000,
                     help="cap on splat count for gsplat (MCMC strategy); lower it if training runs out of GPU memory")
+    ap.add_argument("--no-priors", action="store_true",
+                    help="train gsplat without the monocular depth/normal priors that flatten walls and ceilings")
+    ap.add_argument("--model-name", default="model",
+                    help="output folder for the trained model, so variants of one room can sit side by side")
     ap.add_argument("--stop-after", choices=STAGES, default="train")
     ap.add_argument("--force", choices=STAGES, help="rerun from this stage, deleting its output and later ones")
     ap.add_argument("train_args", nargs=argparse.REMAINDER, help="extra train.py args after --")
@@ -186,15 +213,17 @@ def main():
     work.mkdir(parents=True, exist_ok=True)
     if args.force:
         cleanup = {"frames": ["input", "raw_frames"], "poses": ["database.db", "sparse_raw", "best_model.txt"],
-                   "dataset": ["dataset"], "train": ["model"]}
+                   "dataset": ["dataset"], "priors": ["dataset/priors"],
+                   "train": [args.model_name]}
         for stage in STAGES[STAGES.index(args.force):]:
             for name in cleanup[stage]:
                 p = work / name
                 shutil.rmtree(p) if p.is_dir() else p.unlink(missing_ok=True)
 
-    funcs = {"frames": stage_frames, "poses": stage_poses, "dataset": stage_dataset, "train": stage_train}
+    funcs = {"frames": stage_frames, "poses": stage_poses, "dataset": stage_dataset, "priors": stage_priors,
+             "train": stage_train}
     for stage in STAGES:
-        if stage_done(stage, work):
+        if stage_done(stage, work, args):
             print(f"== {stage}: already done, skipping")
         else:
             print(f"== {stage}")

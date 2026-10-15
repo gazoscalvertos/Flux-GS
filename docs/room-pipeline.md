@@ -49,5 +49,15 @@ python scripts/process_room.py --video ~/Videos/kitchen.mp4 --name kitchen_test 
   --svq_itr 2500 --net_itr 1500 --nn_iter 1500 --densify_until_iter 2000
 ```
 
+### Flat walls and ceilings
+
+Plain walls and ceilings have almost no texture, so photometric training alone leaves them as cloudy
+smears. Before training, the `priors` stage runs [Depth Anything V2](https://huggingface.co/depth-anything/Depth-Anything-V2-Large-hf)
+on every frame (`scripts/depth_priors.py`), and gsplat trains with two extra losses (`scripts/room_priors.py`):
+the rendered depth must correlate with the predicted depth, and rendered surface orientation must match it,
+which keeps flat surfaces flat. `scripts/make_room_trainer.py` adds these to a copy of gsplat's trainer.
+Use `--no-priors` to train without them, and `--model-name` to keep variants side by side, for example
+`--model-name model_priors`. Tune the weights with `-- --prior_depth_lambda 0.1 --prior_normal_lambda 0.05`.
+
 If fewer than 80% of frames register, the script warns you. The usual fix is recapturing with slower
 movement and more overlap; plain walls with no texture are the hardest case.

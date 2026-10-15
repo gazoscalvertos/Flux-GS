@@ -68,6 +68,9 @@ pip install --no-build-isolation "$GSPLAT_DIR"
 pip install --no-build-isolation -r "$GSPLAT_DIR/examples/requirements.txt"
 conda env config vars set GSPLAT_DIR="$GSPLAT_DIR" >/dev/null
 
+echo "==> Depth Anything V2 (monocular depth priors; the model downloads on first use, about 1.3 GB)"
+pip install transformers
+
 if [ "$WITH_FLUXGS" = 1 ]; then
   echo "==> Flux-GS extensions and compression tools"
   pip install websockets tqdm plyfile icecream dahuffman opencv-python-headless
