@@ -86,6 +86,9 @@ def stage_poses(args, work):
     db, images, sparse = work / "database.db", work / "input", work / "sparse_raw"
     if db.exists():
         db.unlink()
+    # A previous interrupted run can leave sparse_raw behind; mapper output must start clean.
+    if sparse.exists():
+        shutil.rmtree(sparse)
     sparse.mkdir(parents=True)
     run(["colmap", "feature_extractor", "--database_path", db, "--image_path", images,
          "--ImageReader.single_camera", "1", "--ImageReader.camera_model", "OPENCV"])
