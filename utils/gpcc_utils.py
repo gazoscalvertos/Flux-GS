@@ -9,6 +9,8 @@ import torch
 
 VOXELIZE_SCALE_FACTOR = 16
 CHUNK_SIZE = 32768
+# Path to the MPEG G-PCC encoder; set FLUXGS_TMC3 to override the default sibling-checkout location.
+TMC3_PATH = os.environ.get('FLUXGS_TMC3', '../mpeg-pcc-tmc13/build/tmc3/tmc3')
 
 
 def gpcc_encode(encoder_path: str, ply_path: str, bin_path: str) -> None:
@@ -240,7 +242,7 @@ def decompress_gaussian_params(
 
     return means_dec, voxelized_means, means_min, means_max
 
-def compress_gpcc(x: torch.Tensor, gpcc_codec_path: str='../mpeg-pcc-tmc13/build/tmc3/tmc3') -> bytes:
+def compress_gpcc(x: torch.Tensor, gpcc_codec_path: str=TMC3_PATH) -> bytes:
     """
     Compress geometry point cloud by GPCC codec.
     """
@@ -255,7 +257,7 @@ def compress_gpcc(x: torch.Tensor, gpcc_codec_path: str='../mpeg-pcc-tmc13/build
             strings = f.read()
     return strings
 
-def decompress_gpcc(strings: bytes, gpcc_codec_path: str='../mpeg-pcc-tmc13/build/tmc3/tmc3') -> torch.Tensor:
+def decompress_gpcc(strings: bytes, gpcc_codec_path: str=TMC3_PATH) -> torch.Tensor:
     """
     Decompress geometry point cloud by GPCC codec.
     """

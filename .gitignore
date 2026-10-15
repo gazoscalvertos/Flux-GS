@@ -5,4 +5,4 @@ tiny-cuda-nn/
 */*/__pycache__/*
 datasets/
 .vscode
-.agents
+.agentsrooms/
