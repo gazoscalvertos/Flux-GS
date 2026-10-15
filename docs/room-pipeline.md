@@ -38,11 +38,11 @@ Useful options: `--stop-after poses` to check registration before training, `--f
 rooms, `--matcher sequential` for very long videos, and anything after `--` is passed to the trainer
 (for example `-- --steps_scaler 0.25` for a quick low-quality test run).
 
-For a quick end-to-end check (about a minute of training), shorten the run and move the compression stages
-inside it; `--nn_iter` must not be later than `--net_itr`:
+For a quick end-to-end check of the Flux-GS trainer (about a minute of training), shorten the run and move
+the compression stages inside it; `--nn_iter` must not be later than `--net_itr`:
 
 ```shell
-python scripts/process_room.py --video ~/Videos/kitchen.mp4 --name kitchen_test --frames 100 -- \
+python scripts/process_room.py --video ~/Videos/kitchen.mp4 --name kitchen_test --frames 100 --trainer fluxgs -- \
   --iterations 3000 --save_iterations 3000 --test_iterations 3000 --checkpoint_iterations 3000 \
   --svq_itr 2500 --net_itr 1500 --nn_iter 1500 --densify_until_iter 2000
 ```
