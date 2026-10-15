@@ -35,7 +35,7 @@ Output goes to `rooms/kitchen/`: `input/` (selected frames), `dataset/` (undisto
 output exists, so you can rerun after a failure; `--force poses` redoes poses onwards.
 
 Useful options: `--stop-after poses` to check registration before training, `--frames 400` for larger
-rooms, `--matcher sequential` for very long videos, and anything after `--` is passed to `train.py`
+rooms, `--matcher sequential` for very long videos, and anything after `--` is passed to the trainer
 (for example `-- --steps_scaler 0.25` for a quick low-quality test run).
 
 If fewer than 80% of frames register, the script warns you. The usual fix is recapturing with slower
